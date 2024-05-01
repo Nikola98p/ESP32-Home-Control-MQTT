@@ -59,13 +59,15 @@ MqttClient mqttClient(wifiClient);
 void KeepMeAlive(void *parameter) {
   while (true) {
     unsigned long currentMillis = millis();
+    unsigned long timeElapsed = currentMillis - previousMillis;
+
+    // Calculate the time remaining until the next check
+    unsigned long timeRemaining = (timeElapsed >= interval) ? 0 : (interval - timeElapsed);
 
     // Check if relay state has changed
-    if (currentMillis - previousMillis >= 840000 ) { // 14 minutes
+    if (timeElapsed >= interval) { // 15 minutes
       previousMillis = currentMillis;
-
       keep_msg_alive = true;
-
       MqttHomeAssistantDiscovery();
       
       // Send relay state message
@@ -76,7 +78,7 @@ void KeepMeAlive(void *parameter) {
     }
 
     // Check if brightness value has changed
-    if (currentMillis - potMillis >= 840000 ) { // 14 minutes
+    if (timeElapsed >= interval) { // 15 minutes
       int potValue = averagePotValue();
       if (abs(potValue - lastPotValue) > 90) {
         potMillis = currentMillis;
@@ -87,6 +89,14 @@ void KeepMeAlive(void *parameter) {
         lastPotValue = potValue;
       }
     }
+
+    // Reset the keep_msg_alive flag after sending MQTT messages
+    if (!keep_msg_alive && timeElapsed >= interval) { // 15 minutes
+      keep_msg_alive = false;
+    }
+
+    // Adjust the delay based on the time remaining until the next check
+    vTaskDelay((timeRemaining > 0) ? (timeRemaining / portTICK_PERIOD_MS) : 1);  // Delay at least 1ms to allow other tasks to run
   }
 }
 
