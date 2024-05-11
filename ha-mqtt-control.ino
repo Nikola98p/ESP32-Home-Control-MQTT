@@ -1,7 +1,6 @@
 #include <WiFi.h>
 #include <ArduinoMqttClient.h>
 #include <ArduinoJson.h>
-#include <WiFiClient.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Update.h>
@@ -42,16 +41,21 @@ bool first_boot;
 bool keep_msg_alive = false;
 // unsigned long lastIPAddressUpdate = 0;
 
-const char *host = "esp32_moja_soba";
-
-//Setup states
 int relayState = LOW;
 // int ledState = LOW;
 int lastButtonState = LOW;
 int lastPotValue = 0;
 
-WebServer server(80);
+const char *host = "esp32_moja_soba";
 
+TaskHandle_t wifiTaskHandle = NULL;
+TaskHandle_t mqttTaskHandle = NULL;
+TaskHandle_t mqttMessageTaskHandle = NULL;
+TaskHandle_t webServerTaskHandle = NULL;
+TaskHandle_t sensorTaskHandle = NULL;
+TaskHandle_t keepAliveTaskHandle = NULL;
+
+WebServer server(80);
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
@@ -68,7 +72,6 @@ void KeepMeAlive(void *parameter) {
     if (timeElapsed >= interval) { // 15 minutes
       previousMillis = currentMillis;
       keep_msg_alive = true;
-      MqttHomeAssistantDiscovery();
       
       // Send relay state message
       String relayStateMessage = (relayState == HIGH) ? "ON" : "OFF";
@@ -112,15 +115,13 @@ void setup() {
 
   digitalWrite(relay_pin, LOW);
 
-  first_boot = true;
-
   xTaskCreatePinnedToCore(
     connectToWiFi,   /* Function to implement the task */
     "ConnectToWiFi", /* Name of the task */
     10000,           /* Stack size in words */
     NULL,            /* Task input parameter */
     1,               /* Priority of the task */
-    NULL,            /* Task handle. */
+    &wifiTaskHandle, /* Task handle */
     0);              /* Core where the task should run */
 
   xTaskCreatePinnedToCore(
@@ -129,7 +130,7 @@ void setup() {
     10000,                 /* Stack size in words */
     NULL,                  /* Task input parameter */
     1,                     /* Priority of the task */
-    NULL,                  /* Task handle. */
+    &mqttTaskHandle,       /* Task handle */
     0);                    /* Core where the task should run */
 
   xTaskCreatePinnedToCore(
@@ -138,7 +139,7 @@ void setup() {
     10000,                /* Stack size in words */
     NULL,                 /* Task input parameter */
     1,                    /* Priority of the task */
-    NULL,                 /* Task handle. */
+    &mqttMessageTaskHandle, /* Task handle */
     0);                   /* Core where the task should run */
 
   xTaskCreatePinnedToCore(
@@ -147,7 +148,7 @@ void setup() {
     10000,             /* Stack size in words */
     NULL,              /* Task input parameter */
     1,                 /* Priority of the task */
-    NULL,              /* Task handle. */
+    &webServerTaskHandle, /* Task handle */
     0);                /* Core where the task should run */
 
   xTaskCreatePinnedToCore(
@@ -156,7 +157,7 @@ void setup() {
     10000,         /* Stack size in words */
     NULL,          /* Task input parameter */
     1,             /* Priority of the task */
-    NULL,          /* Task handle. */
+    &sensorTaskHandle, /* Task handle */
     0);            /* Core where the task should run */
 
   xTaskCreatePinnedToCore(
@@ -165,7 +166,7 @@ void setup() {
     10000,                /* Stack size in words */
     NULL,                 /* Task input parameter */
     1,                    /* Priority of the task */
-    NULL,                 /* Task handle. */
+    &keepAliveTaskHandle, /* Task handle */
     0                     /* Core where the task should run */
   );
 }
